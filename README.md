@@ -1,5 +1,13 @@
 
-````
+# objc-msgenv-sdbus
+
+This library contains the wrapper code for sending messages to the linux Dbus via `sd-bus` library. Under linux there is no standard pubsub installed, so there can be several different messaging environments (ME). 
+
+> ### IPSME- Idempotent Publish/Subscribe Messaging Environment
+> https://dl.acm.org/doi/abs/10.1145/3458307.3460966
+
+#### Subscribing
+```
 bool  handler_str_(sd_bus_message* p_msg, std::string str_msg)
 {
     printf("%s: [%s] \n", __func__, str_msg.c_str());
@@ -36,10 +44,20 @@ void handler_(sd_bus_message* p_msg)
 
     printf("%s: DROP! \n", __func__);
 }
-````
+```
+#### Publishing
+The syntax for native `sd-bus` message signatures can be found here: https://www.freedesktop.org/software/systemd/man/sd_bus_message_append.html#
+The `IPSME_MsgEnv::publish` takes the same signature format. 
 
-````
-RET_TYPE IPSME_MsgEnv::publish(std::string str_msg)
+Sending a string would be this:
+```
+ IPSME_MsgEnv::publish("s", "...");
+```
+
+It is also possible to create a new `sd-bus` message and then use the `sd-bus` library functions to add data before publishing.
+
+```
+void publish(std::string str_msg)
 {
     _CLEANUP_(sd_bus_message_unrefp) sd_bus_message* p_m= IPSME_MsgEnv::sd_bus_message_new();
 
@@ -61,4 +79,15 @@ RET_TYPE IPSME_MsgEnv::publish(std::string str_msg)
 
     return i_r < 0 ? EXIT_FAILURE : EXIT_SUCCESS;
 }
-````
+```
+
+#### Processing
+For messages to be processed, the following call must be part of your run loop:
+```
+ while (! gb_quit_) {
+    // ...
+    IPSME_MsgEnv::process_requests();
+    // ...
+ }
+```
+
