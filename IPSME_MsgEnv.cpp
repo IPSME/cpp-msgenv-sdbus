@@ -62,7 +62,7 @@ RET_TYPE IPSME_MsgEnv::subscribe(tp_handler p_handler)
 		goto finish;
 	}
 
-	printf("%s: %d= subscribe\n", __func__, i_r);
+	// printf("%s: %d= subscribe\n", __func__, i_r);
 
 finish:
 	sd_bus_error_free(&err);
