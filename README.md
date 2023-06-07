@@ -44,6 +44,10 @@ void handler_(sd_bus_message* p_msg)
 
     printf("%s: DROP! \n", __func__);
 }
+
+// ...
+
+IPSME_MsgEnv::subscribe(&handler_);  
 ```
 #### Publishing
 The syntax for native `sd-bus` message signatures can be found here: https://www.freedesktop.org/software/systemd/man/sd_bus_message_append.html#
