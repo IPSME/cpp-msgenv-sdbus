@@ -8,6 +8,8 @@ This library contains the wrapper code for sending messages to the linux Dbus vi
 
 #### Subscribing
 ```
+#include "IPSME_MsgEnv.h" // includes <systemd/sd-bus.h>, which requires libsystemd-dev to be installed (apt?)
+
 bool  handler_str_(sd_bus_message* p_msg, std::string str_msg)
 {
     printf("%s: [%s] \n", __func__, str_msg.c_str());
