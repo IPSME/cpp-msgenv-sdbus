@@ -179,35 +179,15 @@ RET_TYPE IPSME_MsgEnv::publish(const char* psz_types, ...)
 //		return i_r < 0 ? EXIT_FAILURE : EXIT_SUCCESS;
 //	}
 
-RET_TYPE IPSME_MsgEnv::process_requests()
+//----------------------------------------------------------------------------------------------------------------
+
+void IPSME_MsgEnv::process_msgs(int /*i_timeout*/)
 {
-	int i_r;
+	if (! _p_bus)
+		return;
 
-	do {
-		i_r= sd_bus_process(p_bus_, nullptr);
-		if (i_r < 0) {
-			fprintf(stderr, "Failed to process bus: %s\n", strerror(-i_r));
-			goto finish;
-		}
-	
-		// if (i_r)
-		//	printf("\n%s: %d= sd_bus_process \n", __func__, i_r);
+	// drain: process everything pending without blocking, then flush outgoing.
+	while (sd_bus_process(_p_bus, nullptr) > 0) {}
 
-	} while(i_r > 0); // we processed a request, try to process another one, right-away
-
-	//TODO: For more complex programs either connect the bus connection object to an external event loop using sd_bus_get_fd(3) or to an sd-event(3) event loop using sd_bus_attach_event(3). https://www.freedesktop.org/software/systemd/man/sd_bus_wait.html#
-    i_r= sd_bus_wait(p_bus_, (uint64_t) 100*1000); // 100msecs in micro
-    if (i_r < 0) {
-        fprintf(stderr, "Failed to wait on bus: %s\n", strerror(-i_r));
-        goto finish;
-    }
-
-	return i_r;
-	//return i_r < 0 ? EXIT_FAILURE : EXIT_SUCCESS;	
-
-finish:
-	sd_bus_slot_unref(p_slot_);
-	sd_bus_unref(p_bus_);
-
-	return i_r < 0 ? EXIT_FAILURE : EXIT_SUCCESS;	
+	sd_bus_flush(_p_bus);
 }
