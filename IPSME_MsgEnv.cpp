@@ -33,79 +33,77 @@ int sd_handler_(sd_bus_message* p_msg, void* v_userdata, sd_bus_error* p_err)
 	return EXIT_SUCCESS;
 }
 
-RET_TYPE IPSME_MsgEnv::subscribe(tp_handler p_handler)
+bool IPSME_MsgEnv::subscribe(tp_callback p_callback, void* p_void)
 {
-	sd_bus_error err= SD_BUS_ERROR_NULL;
-	sd_bus_message* p_m= nullptr;
-	int i_r;
+	if (! _p_bus)
+		return false;
 
-	i_r = sd_bus_open_system(&p_bus_);
-	if (i_r < 0) {
-		fprintf(stderr, "Failed to connect to system bus: %s\n", strerror(-i_r));
-		goto finish;
-	}
+	_p_callback = p_callback;
+	_p_void     = p_void;
 
-
-	i_r= sd_bus_match_signal(
-			p_bus_, 
-			&p_slot_,
-		 	nullptr,			// const char *sender
-		 	kpsz_OBJ_PATH,		// const char *path
-		 	nullptr,			// const char *interface
-		 	nullptr,			// const char *member
-		 	sd_handler_, 
-			reinterpret_cast<void*>(p_handler)
+	int i_r = sd_bus_match_signal(
+			_p_bus,
+			&_p_slot,
+			nullptr,			// const char *sender
+			kpsz_OBJ_PATH,		// const char *path
+			nullptr,			// const char *interface
+			nullptr,			// const char *member
+			&_match_trampoline,
+			this
 		);
 
 	if (i_r < 0) {
-		fprintf(stderr, "Failed to add match rule: %s\n", strerror(-i_r));
-		goto finish;
+		fprintf(stderr, "IPSME_MsgEnv: failed to add match rule: %s\n", strerror(-i_r));
+		return false;
 	}
 
-	// printf("%s: %d= subscribe\n", __func__, i_r);
-
-finish:
-	sd_bus_error_free(&err);
-	sd_bus_message_unref(p_m);
-	sd_bus_unref(p_bus_);
-
-	return i_r < 0 ? EXIT_FAILURE : EXIT_SUCCESS;
+	return true;
 }
 
 RET_TYPE IPSME_MsgEnv::unsubscribe(tp_handler p_handler);
 
+//----------------------------------------------------------------------------------------------------------------
+
+// Build a fresh dev.IPSME signal message; the caller appends its own arg(s) then sd_bus_send()s it.
+// Returns nullptr on failure. (Parity with the old namespace API.)
 sd_bus_message* IPSME_MsgEnv::sd_bus_message_new()
 {
-	sd_bus_message* p_m= nullptr;
+	if (! _p_bus)
+		return nullptr;
 
-	int i_r= sd_bus_message_new_signal(
-			p_bus_,
+	sd_bus_message* p_m = nullptr;
+
+	int i_r = sd_bus_message_new_signal(
+			_p_bus,
 			&p_m,
-			kpsz_OBJ_PATH,	// const char *path,
+			kpsz_OBJ_PATH,	// const char *path
 			kpsz_INTERFACE,	// const char *interface
-			kpsz_SIGNAL 	// const char *member
+			kpsz_SIGNAL		// const char *member
 		);
-
 	if (i_r < 0) {
-		sd_bus_message_unrefp(&p_m);
-		p_m= nullptr;
+		fprintf(stderr, "IPSME_MsgEnv: failed to create signal: %s\n", strerror(-i_r));
+		return nullptr;
 	}
 
 	return p_m;
 }
 
-RET_TYPE IPSME_MsgEnv::sd_bus_send(sd_bus_message* p_m)
+// Send p_m on the bus and unref it (consumes the reference). Returns the sd_bus_send result (<0 = error).
+IPSME_MsgEnv::RET_TYPE IPSME_MsgEnv::sd_bus_send(sd_bus_message* p_m)
 {
-	if (! p_m)
-		return EXIT_FAILURE;
+	if (! _p_bus || ! p_m)
+		return -1;
 
-	uint64_t ui64_cookie; // message identifier
+	int i_r = ::sd_bus_send(_p_bus, p_m, nullptr);   // ::-qualified -> the libsystemd free function
+	sd_bus_message_unref(p_m);
 
-	// bus only needs to be set when the message is sent to a different bus than the one it's attached to
-	int i_r= sd_bus_send(nullptr, p_m, &ui64_cookie);
+	if (i_r < 0)
+		fprintf(stderr, "IPSME_MsgEnv: failed to send signal: %s\n", strerror(-i_r));
 
 	return i_r;
 }
+
+//----------------------------------------------------------------------------------------------------------------
 
 // According to <systemd/sd-bus.h> on Ubuntu 20.04, the function sd_bus_emit_signalv() does NOT exist.
 // sd_bus_message_appendv() DOES exist and isn't documented on https://www.freedesktop.org/software/systemd/man/sd-bus.html
