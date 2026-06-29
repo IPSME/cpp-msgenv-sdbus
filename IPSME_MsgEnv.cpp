@@ -1,16 +1,20 @@
 
-#include <assert.h>
+//
+//  IPSME_MsgEnv.cpp  (sd-bus, class-based)
+//
+//  Created by dev on 2021-10-27.
+//  Copyright © 2021 Root Interface. All rights reserved.
+//
+
+#include <cstdio>
+#include <cstring>
 #include <systemd/sd-bus.h>
-#include <stdarg.h>
-#include <stdlib.h>
 
 #include "IPSME_MsgEnv.h"
-using IPSME_MsgEnv::RET_TYPE;
-using IPSME_MsgEnv::tp_handler;
 
-const char* kpsz_OBJ_PATH= "/dev/IPSME";
-const char* kpsz_INTERFACE= "dev.IPSME";
-const char* kpsz_SIGNAL= "IPSME";
+static const char* kpsz_OBJ_PATH  = "/dev/IPSME";
+static const char* kpsz_INTERFACE = "dev.IPSME";
+static const char* kpsz_SIGNAL    = "IPSME";
 
 sd_bus* p_bus_= nullptr;
 sd_bus_slot* p_slot_= nullptr;
@@ -60,7 +64,16 @@ bool IPSME_MsgEnv::subscribe(tp_callback p_callback, void* p_void)
 	return true;
 }
 
-RET_TYPE IPSME_MsgEnv::unsubscribe(tp_handler p_handler);
+bool IPSME_MsgEnv::unsubscribe(tp_callback /*p_callback*/)
+{
+	if (_p_slot)
+		_p_slot = sd_bus_slot_unref(_p_slot);
+
+	_p_callback = nullptr;
+	_p_void     = nullptr;
+
+	return true;
+}
 
 //----------------------------------------------------------------------------------------------------------------
 
@@ -109,52 +122,52 @@ IPSME_MsgEnv::RET_TYPE IPSME_MsgEnv::sd_bus_send(sd_bus_message* p_m)
 // sd_bus_message_appendv() DOES exist and isn't documented on https://www.freedesktop.org/software/systemd/man/sd-bus.html
 // but HERE: https://www.freedesktop.org/software/systemd/man/sd_bus_message_append.html#
 
-RET_TYPE IPSME_MsgEnv::publish(const char* psz_types, va_list va_l_argptr)
-{
-	_CLEANUP_(sd_bus_message_unrefp) sd_bus_message* p_m= nullptr;
+// RET_TYPE IPSME_MsgEnv::publish(const char* psz_types, va_list va_l_argptr)
+// {
+// 	_CLEANUP_(sd_bus_message_unrefp) sd_bus_message* p_m= nullptr;
 
-	// printf("%s: %s \n", __func__, "va_list");
+// 	// printf("%s: %s \n", __func__, "va_list");
 
-	int i_r;
+// 	int i_r;
 
-    i_r= sd_bus_message_new_signal(
-            p_bus_,
-            &p_m,
-            kpsz_OBJ_PATH,  // const char *path,
-            kpsz_INTERFACE, // const char *interface
-            kpsz_SIGNAL     // const char *member
-        );
+//     i_r= sd_bus_message_new_signal(
+//             p_bus_,
+//             &p_m,
+//             kpsz_OBJ_PATH,  // const char *path,
+//             kpsz_INTERFACE, // const char *interface
+//             kpsz_SIGNAL     // const char *member
+//         );
 
-	if (i_r < 0)
-		return i_r;
+// 	if (i_r < 0)
+// 		return i_r;
 
-	i_r= sd_bus_message_appendv(p_m, psz_types, va_l_argptr);
-    if (i_r < 0) {
-        fprintf(stderr, "Failed to append va_list arguments: %s\n", strerror(-i_r));
-        sd_bus_message_unref(p_m);
-        return i_r;
-    }
+// 	i_r= sd_bus_message_appendv(p_m, psz_types, va_l_argptr);
+//     if (i_r < 0) {
+//         fprintf(stderr, "Failed to append va_list arguments: %s\n", strerror(-i_r));
+//         sd_bus_message_unref(p_m);
+//         return i_r;
+//     }
 
-	uint64_t ui64_cookie; // message identifier
+// 	uint64_t ui64_cookie; // message identifier
 
-    // bus only needs to be set when the message is sent to a different bus than the one it's attached to
-    i_r= sd_bus_send(nullptr, p_m, &ui64_cookie);
+//     // bus only needs to be set when the message is sent to a different bus than the one it's attached to
+//     i_r= sd_bus_send(nullptr, p_m, &ui64_cookie);
 
-    return i_r;
-}
+//     return i_r;
+// }
 
-RET_TYPE IPSME_MsgEnv::publish(const char* psz_types, ...)
-{
-	// printf("%s: %s \n", __func__, "...");
+// RET_TYPE IPSME_MsgEnv::publish(const char* psz_types, ...)
+// {
+// 	// printf("%s: %s \n", __func__, "...");
 
-	va_list va_l_args;
-	va_start(va_l_args, psz_types); // types last known argument
+// 	va_list va_l_args;
+// 	va_start(va_l_args, psz_types); // types last known argument
 
-	int i_r= IPSME_MsgEnv::publish(psz_types, va_l_args);
+// 	int i_r= IPSME_MsgEnv::publish(psz_types, va_l_args);
 
-	va_end(va_l_args);
-	return i_r;
-}
+// 	va_end(va_l_args);
+// 	return i_r;
+// }
 
 //	RET_TYPE IPSME_MsgEnv::publish(std::string str_msg)
 //	{
@@ -178,6 +191,22 @@ RET_TYPE IPSME_MsgEnv::publish(const char* psz_types, ...)
 //	
 //		return i_r < 0 ? EXIT_FAILURE : EXIT_SUCCESS;
 //	}
+
+bool IPSME_MsgEnv::publish(t_MSG msg)
+{
+	sd_bus_message* p_m = sd_bus_message_new();
+	if (! p_m)
+		return false;
+
+	int i_r = sd_bus_message_append(p_m, "s", msg);
+	if (i_r < 0) {
+		fprintf(stderr, "IPSME_MsgEnv: failed to append string arg: %s\n", strerror(-i_r));
+		sd_bus_message_unref(p_m);
+		return false;
+	}
+
+	return sd_bus_send(p_m) >= 0;   // member sd_bus_send() unrefs p_m
+}
 
 //----------------------------------------------------------------------------------------------------------------
 
