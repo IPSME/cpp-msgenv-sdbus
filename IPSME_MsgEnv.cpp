@@ -16,25 +16,44 @@ static const char* kpsz_OBJ_PATH  = "/dev/IPSME";
 static const char* kpsz_INTERFACE = "dev.IPSME";
 static const char* kpsz_SIGNAL    = "IPSME";
 
-sd_bus* p_bus_= nullptr;
-sd_bus_slot* p_slot_= nullptr;
+//----------------------------------------------------------------------------------------------------------------
 
-// The message m passed to the callback is only borrowed, that is, the callback should not call sd_bus_message_unref(3) on it. 
-// If the callback wants to hold on to the message beyond the lifetime of the callback, it needs to call sd_bus_message_ref(3) to create a new reference.
-int sd_handler_(sd_bus_message* p_msg, void* v_userdata, sd_bus_error* p_err)
+IPSME_MsgEnv::IPSME_MsgEnv()
 {
-	// printf("%s: \n", __func__); fflush(stdout);
-
-	try {
-		tp_handler p_handler= reinterpret_cast<tp_handler>(v_userdata);
-		p_handler(p_msg);
+	int i_r = sd_bus_open_system(&_p_bus);
+	if (i_r < 0) {
+		fprintf(stderr, "IPSME_MsgEnv: failed to connect to system bus: %s\n", strerror(-i_r));
+		_p_bus = nullptr;
 	}
-	catch (...) {
-		assert(false);
-		return EXIT_FAILURE;
+}
+
+IPSME_MsgEnv::~IPSME_MsgEnv()
+{
+	if (_p_slot)
+		_p_slot = sd_bus_slot_unref(_p_slot);
+
+	if (_p_bus)
+		_p_bus = sd_bus_unref(_p_bus);
+}
+
+//----------------------------------------------------------------------------------------------------------------
+
+// The message m passed to the callback is only borrowed; do not unref it here.
+int IPSME_MsgEnv::_match_trampoline(sd_bus_message* p_m, void* userdata, sd_bus_error* /*p_err*/)
+{
+	IPSME_MsgEnv* p_self = reinterpret_cast<IPSME_MsgEnv*>(userdata);
+	if (! p_self || ! p_self->_p_callback)
+		return 0;
+
+	const char* psz = nullptr;
+	int i_r = sd_bus_message_read_basic(p_m, SD_BUS_TYPE_STRING, &psz);
+	if (i_r < 0) {
+		fprintf(stderr, "IPSME_MsgEnv: failed to read signal arg: %s\n", strerror(-i_r));
+		return 0;
 	}
 
-	return EXIT_SUCCESS;
+	p_self->_p_callback(psz, p_self->_p_void);
+	return 0;
 }
 
 bool IPSME_MsgEnv::subscribe(tp_callback p_callback, void* p_void)
